@@ -3,42 +3,100 @@ package utb.fai;
 import java.util.*;
 
 public class ActiveHandlers {
-    private static final long serialVersionUID = 1L;
-    private HashSet<SocketHandler> activeHandlersSet = new HashSet<SocketHandler>();
+	private final Set<SocketHandler> activeHandlersSet = new HashSet<>();
+	private final Map<String, SocketHandler> usernameToHandlerMap = new HashMap<>();
+	private final Map<String, Set<SocketHandler>> groups = new HashMap<>();
 
-    /**
-     * sendMessageToAll - Pole zprávu vem aktivním klientùm kromì sebe sama
-     * 
-     * @param sender  - reference odesílatele
-     * @param message - øetìzec se zprávou
-     */
-    synchronized void sendMessageToAll(SocketHandler sender, String message) {
-        for (SocketHandler handler : activeHandlersSet) // pro vechny aktivní handlery
-            if (handler != sender) {
-                if (!handler.messages.offer(message)) // zkus pøidat zprávu do fronty jeho zpráv
-                    System.err.printf("Client %s message queue is full, dropping the message!\n", handler.clientID);
-            }
-    }
+	// synchronized void sendMessageToAll(SocketHandler sender, String message) {
+	// 	for (SocketHandler handler : activeHandlersSet) {
+	// 		if (handler != sender) {
+	// 			handler.messages.offer(message);
+	// 		}
+	// 	}
+	// }
 
-    /**
-     * add pøidá do mnoiny aktivních handlerù nový handler.
-     * Metoda je sychronizovaná, protoe HashSet neumí multithreading.
-     * 
-     * @param handler - reference na handler, který se má pøidat.
-     * @return true if the set did not already contain the specified element.
-     */
-    synchronized boolean add(SocketHandler handler) {
-        return activeHandlersSet.add(handler);
-    }
+	synchronized void sendMessageToGroupExcept(String group, SocketHandler sender, String message) {
+		Set<SocketHandler> members = groups.get(group);
+		if (members != null) {
+			for (SocketHandler handler : members) {
+				if (handler != sender) {
+					handler.messages.offer(message);
+				}
+			}
+		}
+	}
 
-    /**
-     * remove odebere z mnoiny aktivních handlerù nový handler.
-     * Metoda je sychronizovaná, protoe HashSet neumí multithreading.
-     * 
-     * @param handler - reference na handler, který se má odstranit
-     * @return true if the set did not already contain the specified element.
-     */
-    synchronized boolean remove(SocketHandler handler) {
-        return activeHandlersSet.remove(handler);
-    }
+	synchronized boolean add(SocketHandler handler) {
+		return activeHandlersSet.add(handler);
+	}
+
+	synchronized boolean remove(SocketHandler handler) {
+		activeHandlersSet.remove(handler);
+		if (handler.username != null) {
+			usernameToHandlerMap.remove(handler.username);
+		}
+		for (Set<SocketHandler> groupSet : groups.values()) {
+			groupSet.remove(handler);
+		}
+		cleanupGroups();
+		return true;
+	}
+
+	synchronized boolean isUsernameTaken(String username) {
+		return usernameToHandlerMap.containsKey(username);
+	}
+
+	synchronized SocketHandler getHandlerByUsername(String username) {
+		return usernameToHandlerMap.get(username);
+	}
+
+	synchronized void registerUsername(String username, SocketHandler handler) {
+		usernameToHandlerMap.put(username, handler);
+	}
+
+	synchronized void deregisterUsername(String username) {
+		usernameToHandlerMap.remove(username);
+	}
+
+	synchronized void joinGroup(SocketHandler handler, String groupName) {
+		groups.computeIfAbsent(groupName, k -> new HashSet<>()).add(handler);
+	}
+
+	synchronized void leaveGroup(SocketHandler handler, String groupName) {
+		Set<SocketHandler> set = groups.get(groupName);
+		if (set != null) {
+			set.remove(handler);
+			if (set.isEmpty()) {
+				groups.remove(groupName);
+			}
+		}
+	}
+
+	synchronized Set<String> getGroupsFor(SocketHandler h) {
+		Set<String> result = new HashSet<>();
+		for (Map.Entry<String, Set<SocketHandler>> entry : groups.entrySet()) {
+			if (entry.getValue().contains(h)) {
+				result.add(entry.getKey());
+			}
+		}
+		return result;
+	}
+
+	private void cleanupGroups() {
+		groups.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+	}
+
+	// synchronized Set<String> listGroups() {
+	// 	Set<String> nonEmptyGroups = new TreeSet<>();
+	// 	for (Map.Entry<String, Set<SocketHandler>> entry : groups.entrySet()) {
+	// 		if (!entry.getValue().isEmpty()) {
+	// 			nonEmptyGroups.add(entry.getKey());
+	// 		}
+	// 	}
+	// 	return nonEmptyGroups;
+	// }
+
+	// synchronized Set<SocketHandler> getGroupMembers(String groupName) {
+	// 	return groups.getOrDefault(groupName, Collections.emptySet());
+	// }
 }

@@ -21,21 +21,20 @@ public class App {
 			} catch (NumberFormatException e) {
 				System.err.printf("Argument %s is not integer, using default value", args[0], port);
 			}
-			if (args.length > 1)
+			if (args.length > 1) {
 				try {
 					max_conn = Integer.decode(args[1]);
 				} catch (NumberFormatException e) {
 					System.err.printf("Argument %s is not integer, using default value", args[1], max_conn);
 				}
-
+			}
 		}
-		// TODO Auto-generated method stub
+
 		System.out.printf("IM server listening on port %d, maximum nr. of connections=%d...\n", port, max_conn);
 		ExecutorService pool = Executors.newFixedThreadPool(2 * max_conn);
 		ActiveHandlers activeHandlers = new ActiveHandlers();
 
-		try {
-			ServerSocket sSocket = new ServerSocket(port);
+		try (ServerSocket sSocket = new ServerSocket(port)) {
 			do {
 				Socket clientSocket = sSocket.accept();
 				clientSocket.setKeepAlive(true);
@@ -49,17 +48,14 @@ public class App {
 			e.printStackTrace();
 			pool.shutdown();
 			try {
-				// Wait a while for existing tasks to terminate
 				if (!pool.awaitTermination(60, TimeUnit.SECONDS)) {
-					pool.shutdownNow(); // Cancel currently executing tasks
-					// Wait a while for tasks to respond to being cancelled
-					if (!pool.awaitTermination(60, TimeUnit.SECONDS))
+					pool.shutdownNow();
+					if (!pool.awaitTermination(60, TimeUnit.SECONDS)) {
 						System.err.println("Pool did not terminate");
+					}
 				}
 			} catch (InterruptedException ie) {
-				// (Re-)Cancel if current thread also interrupted
 				pool.shutdownNow();
-				// Preserve interrupt status
 				Thread.currentThread().interrupt();
 			}
 		}
